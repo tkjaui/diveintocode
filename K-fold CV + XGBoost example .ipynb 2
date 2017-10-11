@@ -1,0 +1,330 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "#load libraries\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "from sklearn.model_selection import train_test_split\n",
+    "from sklearn.model_selection import KFold\n",
+    "import xgboost as xgb"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "#Gini metric\n",
+    "def gini(actual, pred, cmpcol = 0, sortcol = 1):\n",
+    "    assert( len(actual) == len(pred) )\n",
+    "    all = np.asarray(np.c_[ actual, pred, np.arange(len(actual)) ], dtype=np.float)\n",
+    "    all = all[ np.lexsort((all[:,2], -1*all[:,1])) ]\n",
+    "    totalLosses = all[:,0].sum()\n",
+    "    giniSum = all[:,0].cumsum().sum() / totalLosses\n",
+    "    \n",
+    "    giniSum -= (len(actual) + 1) / 2.\n",
+    "    return giniSum / len(actual)\n",
+    "\n",
+    "def gini_normalized(a, p):\n",
+    "    return gini(a, p) / gini(a, a)\n",
+    "\n",
+    "def gini_xgb(preds, dtrain):\n",
+    "    labels = dtrain.get_label()\n",
+    "    gini_score = gini_normalized(labels, preds)\n",
+    "    return [('gini', gini_score)]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "#loading the train and test data\n",
+    "df_train = pd.read_csv('train-1.csv')\n",
+    "df_test = pd.read_csv('test-1.csv')\n",
+    "\n",
+    "target_train = df_train['target'].values\n",
+    "id_test = df_test['id'].values\n",
+    "\n",
+    "train = np.array(df_train.drop(['target','id'],axis=1))\n",
+    "test = np.array(df_test.drop(['id'],axis=1))\n",
+    "\n",
+    "xgb_preds = []"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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\nbrmQZlvu7BAAAAAASUVORK5CYII=\n",
+      "text/plain": [
+       "<matplotlib.figure.Figure at 0x11af0cdd8>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#preprocessing\n",
+    "import matplotlib.pyplot as plt\n",
+    "from sklearn.linear_model import LogisticRegression\n",
+    "from sklearn.decomposition import PCA\n",
+    "pca = PCA(n_components=None)\n",
+    "train_v2_pca = pca.fit_transform(train)\n",
+    "var_exp = pca.explained_variance_ratio_\n",
+    "cum_var_exp = np.cumsum(var_exp)\n",
+    "\n",
+    "plt.bar(range(1,58),var_exp,label='indivisual explained variance')\n",
+    "plt.step(range(1,58),cum_var_exp,label='cumulative explained variance')\n",
+    "plt.ylabel('Explained variance ratio')\n",
+    "plt.xlabel('Principal components')\n",
+    "plt.legend(loc='best')\n",
+    "plt.show()\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "pca = PCA(n_components=3)\n",
+    "data_pca = pca.fit_transform(train)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "(595212, 3)"
+      ]
+     },
+     "execution_count": 17,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "data_pca.shape"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "(595212,)\n",
+      "(892816,)\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(target_train.shape)\n",
+    "print(id_test.shape)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "(595212, 57)\n",
+      "(892816, 57)\n",
+      "(595212, 3)\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(train.shape)\n",
+    "print(test.shape)\n",
+    "print(data_pca.shape)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "#create k-fold cross-validation(k=5 here)\n",
+    "K = 5\n",
+    "kf = KFold(n_splits = K, random_state=3228, shuffle= True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[0]\ttrain-auc:0.534383\tvalid-auc:0.532652\ttrain-gini:0.070169\tvalid-gini:0.0663\n",
+      "Multiple eval metrics have been passed: 'valid-gini' will be used for early stopping.\n",
+      "\n",
+      "Will train until valid-gini hasn't improved in 100 rounds.\n",
+      "[50]\ttrain-auc:0.559887\tvalid-auc:0.553653\ttrain-gini:0.119789\tvalid-gini:0.107493\n",
+      "[100]\ttrain-auc:0.562635\tvalid-auc:0.556145\ttrain-gini:0.125179\tvalid-gini:0.112474\n",
+      "[150]\ttrain-auc:0.56795\tvalid-auc:0.560445\ttrain-gini:0.135911\tvalid-gini:0.120849\n",
+      "[200]\ttrain-auc:0.580176\tvalid-auc:0.569623\ttrain-gini:0.160353\tvalid-gini:0.139235\n",
+      "[250]\ttrain-auc:0.588802\tvalid-auc:0.573528\ttrain-gini:0.177601\tvalid-gini:0.147056\n",
+      "[300]\ttrain-auc:0.59581\tvalid-auc:0.576228\ttrain-gini:0.191618\tvalid-gini:0.152455\n",
+      "[350]\ttrain-auc:0.600499\tvalid-auc:0.57774\ttrain-gini:0.200997\tvalid-gini:0.155479\n",
+      "[400]\ttrain-auc:0.603869\tvalid-auc:0.578545\ttrain-gini:0.207738\tvalid-gini:0.157088\n",
+      "[450]\ttrain-auc:0.607239\tvalid-auc:0.578852\ttrain-gini:0.214478\tvalid-gini:0.157705\n",
+      "[500]\ttrain-auc:0.610323\tvalid-auc:0.579351\ttrain-gini:0.220645\tvalid-gini:0.158702\n",
+      "[550]\ttrain-auc:0.613291\tvalid-auc:0.579393\ttrain-gini:0.226581\tvalid-gini:0.158786\n",
+      "[600]\ttrain-auc:0.615924\tvalid-auc:0.579642\ttrain-gini:0.231848\tvalid-gini:0.159284\n",
+      "[650]\ttrain-auc:0.618102\tvalid-auc:0.579925\ttrain-gini:0.236205\tvalid-gini:0.15985\n",
+      "[700]\ttrain-auc:0.620419\tvalid-auc:0.580082\ttrain-gini:0.240838\tvalid-gini:0.160163\n",
+      "[750]\ttrain-auc:0.622438\tvalid-auc:0.580192\ttrain-gini:0.244876\tvalid-gini:0.160383\n",
+      "[800]\ttrain-auc:0.624181\tvalid-auc:0.580202\ttrain-gini:0.248362\tvalid-gini:0.160404\n",
+      "[850]\ttrain-auc:0.625966\tvalid-auc:0.58029\ttrain-gini:0.251933\tvalid-gini:0.16058\n",
+      "[900]\ttrain-auc:0.627868\tvalid-auc:0.580286\ttrain-gini:0.255737\tvalid-gini:0.160572\n",
+      "[950]\ttrain-auc:0.62967\tvalid-auc:0.58001\ttrain-gini:0.259339\tvalid-gini:0.160021\n",
+      "Stopping. Best iteration:\n",
+      "[879]\ttrain-auc:0.62717\tvalid-auc:0.58041\ttrain-gini:0.25434\tvalid-gini:0.160819\n",
+      "\n"
+     ]
+    },
+    {
+     "ename": "ValueError",
+     "evalue": "feature_names mismatch: ['f0', 'f1', 'f2'] ['f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12', 'f13', 'f14', 'f15', 'f16', 'f17', 'f18', 'f19', 'f20', 'f21', 'f22', 'f23', 'f24', 'f25', 'f26', 'f27', 'f28', 'f29', 'f30', 'f31', 'f32', 'f33', 'f34', 'f35', 'f36', 'f37', 'f38', 'f39', 'f40', 'f41', 'f42', 'f43', 'f44', 'f45', 'f46', 'f47', 'f48', 'f49', 'f50', 'f51', 'f52', 'f53', 'f54', 'f55', 'f56']\ntraining data did not have the following fields: f42, f5, f12, f27, f45, f14, f43, f48, f34, f29, f32, f31, f20, f17, f40, f56, f51, f39, f55, f54, f8, f9, f53, f23, f21, f3, f18, f50, f24, f46, f41, f37, f35, f6, f30, f38, f47, f52, f28, f11, f13, f19, f22, f10, f4, f7, f49, f25, f26, f33, f15, f44, f16, f36",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mValueError\u001b[0m                                Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-22-063ee6f0e7af>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m     14\u001b[0m     \u001b[0mmodel\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mxgb\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mtrain\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mxgb_params\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0md_train\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;36m5000\u001b[0m\u001b[0;34m,\u001b[0m  \u001b[0mwatchlist\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mfeval\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mgini_xgb\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mmaximize\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;32mTrue\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mverbose_eval\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m50\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mearly_stopping_rounds\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m100\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     15\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 16\u001b[0;31m     \u001b[0mxgb_pred\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mmodel\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mpredict\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0md_test\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     17\u001b[0m     \u001b[0mxgb_preds\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mappend\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mlist\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mxgb_pred\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/Users/sakashitatakuji/anaconda/lib/python3.6/site-packages/xgboost-0.6-py3.6.egg/xgboost/core.py\u001b[0m in \u001b[0;36mpredict\u001b[0;34m(self, data, output_margin, ntree_limit, pred_leaf, pred_contribs)\u001b[0m\n\u001b[1;32m   1035\u001b[0m             \u001b[0moption_mask\u001b[0m \u001b[0;34m|=\u001b[0m \u001b[0;36m0x04\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1036\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m-> 1037\u001b[0;31m         \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_validate_features\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mdata\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m   1038\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1039\u001b[0m         \u001b[0mlength\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mc_bst_ulong\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/Users/sakashitatakuji/anaconda/lib/python3.6/site-packages/xgboost-0.6-py3.6.egg/xgboost/core.py\u001b[0m in \u001b[0;36m_validate_features\u001b[0;34m(self, data)\u001b[0m\n\u001b[1;32m   1279\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1280\u001b[0m                 raise ValueError(msg.format(self.feature_names,\n\u001b[0;32m-> 1281\u001b[0;31m                                             data.feature_names))\n\u001b[0m\u001b[1;32m   1282\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1283\u001b[0m     \u001b[0;32mdef\u001b[0m \u001b[0mget_split_value_histogram\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mfeature\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mfmap\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m''\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mbins\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;32mNone\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mas_pandas\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;32mTrue\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mValueError\u001b[0m: feature_names mismatch: ['f0', 'f1', 'f2'] ['f0', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12', 'f13', 'f14', 'f15', 'f16', 'f17', 'f18', 'f19', 'f20', 'f21', 'f22', 'f23', 'f24', 'f25', 'f26', 'f27', 'f28', 'f29', 'f30', 'f31', 'f32', 'f33', 'f34', 'f35', 'f36', 'f37', 'f38', 'f39', 'f40', 'f41', 'f42', 'f43', 'f44', 'f45', 'f46', 'f47', 'f48', 'f49', 'f50', 'f51', 'f52', 'f53', 'f54', 'f55', 'f56']\ntraining data did not have the following fields: f42, f5, f12, f27, f45, f14, f43, f48, f34, f29, f32, f31, f20, f17, f40, f56, f51, f39, f55, f54, f8, f9, f53, f23, f21, f3, f18, f50, f24, f46, f41, f37, f35, f6, f30, f38, f47, f52, f28, f11, f13, f19, f22, f10, f4, f7, f49, f25, f26, f33, f15, f44, f16, f36"
+     ]
+    }
+   ],
+   "source": [
+    "for train_index, test_index in kf.split(data_pca):\n",
+    "    train_X, valid_X = data_pca[train_index], data_pca[test_index]\n",
+    "    train_y, valid_y = target_train[train_index], target_train[test_index]\n",
+    "\n",
+    "    # params configuration also from the1owl's kernel\n",
+    "    # https://www.kaggle.com/the1owl/forza-baseline\n",
+    "    xgb_params = {'eta': 0.02, 'max_depth': 4, 'subsample': 0.9, 'colsample_bytree': 0.9, 'objective': 'binary:logistic', 'eval_metric': 'auc', 'seed': 99, 'silent': True}\n",
+    "\n",
+    "    d_train = xgb.DMatrix(train_X, train_y)\n",
+    "    d_valid = xgb.DMatrix(valid_X, valid_y)\n",
+    "    d_test = xgb.DMatrix(test)\n",
+    "    \n",
+    "    watchlist = [(d_train, 'train'), (d_valid, 'valid')]\n",
+    "    model = xgb.train(xgb_params, d_train, 5000,  watchlist, feval=gini_xgb, maximize=True, verbose_eval=50, early_stopping_rounds=100)\n",
+    "                        \n",
+    "    xgb_pred = model.predict(d_test)\n",
+    "    xgb_preds.append(list(xgb_pred))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "ename": "IndexError",
+     "evalue": "list index out of range",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mIndexError\u001b[0m                                Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-23-6f042dba6f15>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0mpreds\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 2\u001b[0;31m \u001b[0;32mfor\u001b[0m \u001b[0mi\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mrange\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mlen\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mxgb_preds\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;36m0\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      3\u001b[0m     \u001b[0msum\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m0\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      4\u001b[0m     \u001b[0;32mfor\u001b[0m \u001b[0mj\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mrange\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mK\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      5\u001b[0m         \u001b[0msum\u001b[0m\u001b[0;34m+=\u001b[0m\u001b[0mxgb_preds\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0mj\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0mi\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mIndexError\u001b[0m: list index out of range"
+     ]
+    }
+   ],
+   "source": [
+    "preds=[]\n",
+    "for i in range(len(xgb_preds[0])):\n",
+    "    sum=0\n",
+    "    for j in range(K):\n",
+    "        sum+=xgb_preds[j][i]\n",
+    "    preds.append(sum / K)\n",
+    "\n",
+    "output = pd.DataFrame({'id': id_test, 'target': preds})\n",
+    "output.to_csv(\"{}-foldCV_avg_sub2.csv\".format(K), index=False)    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.6.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
